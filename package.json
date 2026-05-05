@@ -1,0 +1,8 @@
+{
+  "name": "noteit",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\""
+  }
+}

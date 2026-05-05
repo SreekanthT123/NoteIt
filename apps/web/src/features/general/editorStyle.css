@@ -1,0 +1,16 @@
+
+/* Remove default focus styles */
+.ProseMirror {
+  outline: none;
+  border: none;
+}
+
+/* Remove any focus ring */
+.ProseMirror:focus {
+  outline: none;
+}
+
+/* Optional: make it feel like plain text */
+.ProseMirror p {
+  margin: 0;
+}

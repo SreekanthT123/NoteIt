@@ -12,10 +12,15 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { Editor } from "../general/Editor";
-const NotesCard = ({ note, onUpdateNote, isExpanded }: any) => {
+import TaskCard from "../tasks/TaskCard";
+const NotesCard = ({ note, onUpdateNote, isExpanded, taskUpdateMutation }: any) => {
+  const isNewNote = note._id.includes("temp");
+  const [editedTitle, setEditedTitle] = useState(note.title || "");
   const [editedText, setEditedText] = useState(note.body);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedTheme, setEditedTheme] = useState<keyof typeof NOTE_THEMES>(note.theme);
+  const [isEditing, setIsEditing] = useState(isNewNote);
+  const [editedTheme, setEditedTheme] = useState<keyof typeof NOTE_THEMES>(
+    note.theme,
+  );
   const [showDetails, setShowDetails] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const theme = NOTE_THEMES[editedTheme];
@@ -41,12 +46,20 @@ const NotesCard = ({ note, onUpdateNote, isExpanded }: any) => {
       }`}
     >
       <div className="text-base font-medium flex items-center gap-2 py-1">
-        <NotebookText /> Note
+        <NotebookText />
+        <input
+          className="bg-transparent outline-none font-medium text-base w-full placeholder:text-gray-400 cursor-text"
+          value={editedTitle}
+          onChange={(e) => { setEditedTitle(e.target.value); setIsEditing(true); }}
+          onClick={() => setIsEditing(true)}
+          placeholder="Untitled"
+        />
       </div>
       <Editor
         value={editedText}
         onChange={setEditedText}
         onFocus={() => setIsEditing(true)}
+        autofocus={isNewNote}
       />
 
       {isEditing && (
@@ -69,7 +82,7 @@ const NotesCard = ({ note, onUpdateNote, isExpanded }: any) => {
               onClick={async () => {
                 setIsSaving(true);
                 try {
-                  await onUpdateNote(note._id, editedText, editedTheme);
+                  await onUpdateNote(note._id, editedText, editedTheme, editedTitle);
                   setIsEditing(false);
                 } finally {
                   setIsSaving(false);
@@ -107,18 +120,24 @@ const NotesCard = ({ note, onUpdateNote, isExpanded }: any) => {
             <div className={`text-xs `}>{note.aiSummary}</div>
           </div>
           {showDetails && (
-            <div className="mt-2 p-2 rounded-lg bg-white/30">
-              <div className="text-xs font-semibold mb-1">Tasks</div>
+            <div className="mt-2 p-2 rounded-lg bg-white/30 flex flex-col gap-2">
+              <div className="text-xs font-semibold">Tasks</div>
 
               {note.extractedTasks?.length > 0 ? (
                 note.extractedTasks.map((t: any) => (
-                  <div key={t._id} className="text-xs flex justify-between">
-                    <span>• {t.title}</span>
+                  <div key={t._id} className="">
+                    {/* <span>• {t.title}</span>
                     {t.dueAt && (
                       <span className="text-gray-500">
                         {format(new Date(t.dueAt), "MMM d")}
                       </span>
-                    )}
+                    )} */}
+                    <TaskCard
+                      task={t}
+                      startTask={(id: string) => taskUpdateMutation?.mutate({ id, status: "in_progress" })}
+                      completeTask={(id: string) => taskUpdateMutation?.mutate({ id, status: "done" })}
+                      cancelTask={(id: string) => taskUpdateMutation?.mutate({ id, status: "todo" })}
+                    />
                   </div>
                 ))
               ) : (

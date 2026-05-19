@@ -5,7 +5,7 @@ import { useState } from "react";
 export const Notes = ({ notes, onUpdateNote, taskUpdateMutation }: any) => {
   const [selectedNote, setSelectedNote] = useState<any>(null);
   const breakpointColumnsObj = {
-    default: 4,
+    default: 3,
     1024: 2,
     768: 1,
   };

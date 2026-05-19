@@ -35,16 +35,23 @@ const TaskSchema = new mongoose.Schema(
       default: "",
     },
 
-    aiFingerprint: {
+    priority: {
       type: String,
+      default: "low",
     },
+
+    recurrence: {
+      type: String,
+      default: "none",
+    },
+
+    type: {
+      type: String,
+      default: "one_time",
+    },
+
   },
   { timestamps: true },
-);
-
-TaskSchema.index(
-  { noteId: 1, aiFingerprint: 1 },
-  { unique: true, sparse: true },
 );
 
 export default mongoose.model("Task", TaskSchema);

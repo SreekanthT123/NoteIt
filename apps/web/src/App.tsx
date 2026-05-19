@@ -37,10 +37,14 @@ import {
   DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu";
 import AiUsage from "./features/general/AiUsage";
+import HorizontalScroll from "./features/general/Landing";
 
 function App() {
-  const [text, setText] = useState("");
+  const [search, setSearch] = useState("");
+  const [taskFilter, setTaskFilter] = useState({ status: "", due: "" });
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedView, setSelectedView] = useState("notes");
+  const [showLanding, setShowLanding] = useState(true);
   const [selectedTab, setSelectedTab] = useState("notesTabView");
   const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem("token"));
   const [limitReached, setLimitReached] = useState(false);
@@ -53,14 +57,18 @@ function App() {
     isError,
   } = useQuery({
     enabled: isLoggedIn,
-    queryKey: ["notes"],
+    queryKey: ["notes", debouncedSearch],
     queryFn: async () => {
       if (!isLoggedIn) return [];
 
-      const res = await api.get("/notes");
+      const res = await api.get("/notes", { params: { q: debouncedSearch } });
       return res.data.notes;
     },
   });
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => {
     if (isError && error) {
@@ -83,11 +91,11 @@ function App() {
   // });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, body, theme }: any) => {
+    mutationFn: async ({ id, body, theme, title }: any) => {
       if (id.includes("temp")) {
-        await api.post("/notes", { body, theme });
+        await api.post("/notes", { body, theme, title });
       } else {
-        await api.patch(`/notes/${id}`, { body, theme });
+        await api.patch(`/notes/${id}`, { body, theme, title });
       }
     },
     onSuccess: (_data, variables) => {
@@ -99,18 +107,18 @@ function App() {
     },
   });
 
-  const updateNote = (id: string, body: string, theme: string) => {
-    return updateMutation.mutateAsync({ id, body, theme });
+  const updateNote = (id: string, body: string, theme: string, title: string) => {
+    return updateMutation.mutateAsync({ id, body, theme, title });
   };
 
   const { data: tasks = [] } = useQuery({
     enabled: isLoggedIn,
-    queryKey: ["tasks"],
+    queryKey: ["tasks", taskFilter],
     queryFn: async () => {
       if (!isLoggedIn) {
         return [];
       }
-      const res = await api.get("/tasks");
+      const res = await api.get("/tasks", { params: taskFilter });
       return res.data.tasks;
     },
     // refetchInterval: 5000, // Poll every 5 seconds for updates
@@ -126,16 +134,18 @@ function App() {
   });
 
   const pushNewNote = () => {
-    const newNote = {
-      _id: Math.random().toString(36).substr(2, 9) + "-temp", // temporary id
-      body: "",
-      theme: "lavender",
-      processingStatus: "idle",
-    };
-    queryClient.setQueryData(["notes"], (oldData: any) => {
-      return [newNote, ...(oldData || [])];
-    });
+  const newNote = {
+    _id: Math.random().toString(36).substr(2, 9) + "-temp",
+    title: "",
+    body: "",
+    theme: "lavender",
+    processingStatus: "idle",
   };
+
+  queryClient.setQueryData(["notes", debouncedSearch], (oldData: any) => {
+    return [newNote, ...(oldData || [])];
+  });
+};
 
   const handleUserLogin = (value: boolean) => {
     setIsLoggedIn(value);
@@ -145,10 +155,10 @@ function App() {
     }
   };
   return (
-    <div className="min-h-screen max-h-screen  bg-slate-950 p-4 flex flex-col gap-2">
+    <div className="min-h-screen max-h-screen bg-[#0e0e1a] p-4 flex flex-col gap-2">
       <div className="flex justify-between items-center">
         <div className="text-white font-semibold py-2 tracking-[0.2rem] text-base pl-4">
-          Note<span className="text-blue-500 rotate-90 text-lg">!</span>t
+          Note<span className="text-indigo-500 rotate-90 text-lg">!</span>t
         </div>
         {/* show tabsection only if user is logged in */}
         {isLoggedIn && (
@@ -226,10 +236,29 @@ function App() {
             </div>
           </div>
         )}
+        {!isLoggedIn && (
+          <>
+          <button
+                  className="btn-primary text-white border-none px-7 py-3 rounded-[10px] text-sm cursor-pointer transition-all duration-200 font-sans shadow-[0_8px_24px_rgba(124,111,255,0.25)]"
+                  style={{ background: "#7C6FFF" }}
+                  onClick={() => setShowLanding(false)}
+                >
+                  Login to NoteIt
+                </button>
+          </>
+        )}
       </div>
       {!isLoggedIn && (
-        <div className="bg-slate-100 rounded-2xl min-h-full overflow-auto flex flex-col flex-1 ">
-          <AuthLayout onAuth={handleUserLogin} />
+        <div className="rounded-2xl min-h-full max-h-full overflow-auto  flex flex-col flex-1 ">
+          {showLanding ? (
+            <div className="bg-slate-950 rounded-2xl h-full overflow-auto flex flex-col flex-1">
+              <HorizontalScroll setShowLanding={setShowLanding} />
+            </div>
+          ) : (
+            <div className="bg-slate-100 rounded-2xl h-full overflow-auto flex flex-col flex-1">
+              <AuthLayout onAuth={handleUserLogin} />
+            </div>
+          )}
         </div>
       )}
       {isLoggedIn && (
@@ -240,13 +269,42 @@ function App() {
               👋Welcome Sreekanth!
             </div>
             <div className="flex gap-2 items-center w-[60%] justify-end">
-              <Search />
-              <Input
-                id="input-field-username"
-                type="text"
-                placeholder="Search"
-                className="w-[200px]"
-              />
+              {selectedTab === "notesTabView" && (
+                <>
+                  <Search />
+                  <Input
+                    id="input-field-username"
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search"
+                    className="w-[200px]"
+                  />
+                </>
+              )}
+              {selectedTab === "tasksTabView" && (
+                <>
+                  <Button
+                    size="sm"
+                    onClick={() => setTaskFilter({ status: "todo" })}
+                  >
+                    Todo
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setTaskFilter({ status: "today" })}
+                  >
+                    Today
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setTaskFilter({ status: "overdue" })}
+                  >
+                    OverDue
+                  </Button>
+                </>
+              )}
+
               <CalendarDays size={16} />
               <LiveClock />
             </div>

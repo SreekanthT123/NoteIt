@@ -10,6 +10,58 @@ import { authMiddleware } from "../middleware/auth.js";
 const router = express.Router();
 router.use(authMiddleware);
 
+// Syncs AI-extracted tasks for a note, preserving existing task status on title match.
+// Orphaned tasks (removed from note content) are deleted.
+async function syncTasksForNote(note, body, user) {
+  const tasks = await extractTasks(body, user); // throws "AI usage limit reached" if quota hit
+  if (!Array.isArray(tasks)) return;
+
+  const existingTasks = await Task.find({ noteId: note._id, userId: user._id });
+  const existingByTitle = new Map(
+    existingTasks.map((t) => [t.title.toLowerCase().trim(), t])
+  );
+  const newTitles = new Set(tasks.map((t) => t.title.toLowerCase().trim()));
+  const survivingIds = [];
+
+  for (const t of tasks) {
+    const key = t.title.toLowerCase().trim();
+    const existing = existingByTitle.get(key);
+    if (existing) {
+      // Update metadata but keep the user's current status
+      existing.dueAt = isValidDate(t.dueAt) ? new Date(t.dueAt) : null;
+      existing.priority = t.priority || "low";
+      existing.recurrence = t.recurrence || "none";
+      existing.type = t.type || "one_time";
+      existing.sourceText = t.sourceText;
+      await existing.save();
+      survivingIds.push(existing._id);
+    } else {
+      const created = await Task.create({
+        noteId: note._id,
+        userId: user._id,
+        title: t.title,
+        status: "todo",
+        dueAt: isValidDate(t.dueAt) ? new Date(t.dueAt) : null,
+        priority: t.priority || "low",
+        recurrence: t.recurrence || "none",
+        type: t.type || "one_time",
+        sourceText: t.sourceText,
+      });
+      survivingIds.push(created._id);
+    }
+  }
+
+  // Remove tasks that are no longer in the AI output
+  const orphanedIds = existingTasks
+    .filter((t) => !newTitles.has(t.title.toLowerCase().trim()))
+    .map((t) => t._id);
+  if (orphanedIds.length) {
+    await Task.deleteMany({ _id: { $in: orphanedIds } });
+  }
+
+  note.extractedTasks = survivingIds;
+}
+
 router.post("/", async (req, res) => {
   try {
     const { title, body, theme } = req.body;
@@ -30,71 +82,40 @@ router.post("/", async (req, res) => {
 
     try {
       let aiResult;
-
       try {
         aiResult = await summarizeNote(body, req.user);
       } catch (err) {
         if (err.message === "AI usage limit reached") {
           return res.status(403).json({ error: err.message });
         }
-        throw err; // 🔥 important
+        throw err;
       }
 
-      if (!aiResult) {
-        throw new Error("AI summary failed");
-      }
+      if (!aiResult) throw new Error("AI summary failed");
 
       note.aiSummary = aiResult.summary;
       note.tags = aiResult.tags;
       note.processingStatus = "completed";
       note.aiProcessedAt = new Date();
-      // TASK EXTRACTION
-      let tasks;
+
       try {
-        tasks = await extractTasks(body, req.user);
+        await syncTasksForNote(note, body, req.user);
       } catch (err) {
         if (err.message === "AI usage limit reached") {
           return res.status(403).json({ error: err.message });
         }
+        console.error("Task extraction error:", err.message);
       }
 
-      for (const t of tasks) {
-        const fingerprint = `${t.title}-${t.sourceText}`;
-
-        try {
-          const task = await Task.findOneAndUpdate(
-            { noteId: note._id, aiFingerprint: fingerprint },
-            {
-              noteId: note._id,
-              userId: req.user._id,
-              title: t.title,
-              dueAt: isValidDate(t.dueAt) ? new Date(t.dueAt) : null,
-              sourceText: t.sourceText,
-              aiFingerprint: fingerprint,
-            },
-            { upsert: true, new: true },
-          );
-
-          note.extractedTasks.push(task._id);
-        } catch (err) {
-          console.error("Task error:", err.message);
-        }
-      }
-      // FIND RELATIONS
       const existingNotes = await Note.find({
         _id: { $ne: note._id },
+        userId: req.user._id,
       });
-
       const relations = await findRelations(note, existingNotes);
-
       for (const rel of relations) {
         try {
           await Relation.findOneAndUpdate(
-            {
-              fromNoteId: note._id,
-              toNoteId: rel.toNoteId,
-              type: rel.type,
-            },
+            { fromNoteId: note._id, toNoteId: rel.toNoteId, type: rel.type },
             {
               fromNoteId: note._id,
               toNoteId: rel.toNoteId,
@@ -102,7 +123,7 @@ router.post("/", async (req, res) => {
               confidence: rel.confidence,
               userId: req.user._id,
             },
-            { upsert: true },
+            { upsert: true }
           );
         } catch (err) {
           console.error("Relation error:", err.message);
@@ -126,13 +147,13 @@ router.post("/", async (req, res) => {
 
 router.patch("/:id", async (req, res) => {
   try {
-    const { body, theme } = req.body;
+    const { body, theme, title } = req.body;
 
     if (!body || body.trim() === "") {
       return res.status(400).json({ error: "Body is required" });
     }
 
-    const note = await Note.findOneAndUpdate({
+    const note = await Note.findOne({
       _id: req.params.id,
       userId: req.user._id,
     });
@@ -141,22 +162,20 @@ router.patch("/:id", async (req, res) => {
       return res.status(404).json({ error: "Note not found" });
     }
 
-    // 1. Update content
+    // Update editable fields
     note.body = body;
+    if (title !== undefined) note.title = title;
     note.theme = ["lavender", "mint", "sky", "peach", "gray"].includes(theme)
       ? theme
       : "lavender";
-    // 2. Reset AI-related fields
+
+    // Mark as processing without wiping extractedTasks yet
     note.processingStatus = "processing";
     note.aiSummary = "";
     note.tags = [];
-    note.extractedTasks = []; // IMPORTANT
-
     await note.save();
 
     try {
-      // 3. Run AI
-
       let aiResult;
       try {
         aiResult = await summarizeNote(body, req.user);
@@ -164,62 +183,41 @@ router.patch("/:id", async (req, res) => {
         if (err.message === "AI usage limit reached") {
           return res.status(403).json({ error: err.message });
         }
+        throw err;
       }
+
       note.aiSummary = aiResult.summary;
       note.tags = aiResult.tags;
       note.processingStatus = "completed";
       note.aiProcessedAt = new Date();
 
-      // 4. TASK EXTRACTION
-      let tasks;
       try {
-        tasks = await extractTasks(body, req.user);
+        await syncTasksForNote(note, body, req.user);
       } catch (err) {
         if (err.message === "AI usage limit reached") {
           return res.status(403).json({ error: err.message });
         }
+        console.error("Task extraction error:", err.message);
       }
 
-      for (const t of tasks) {
-        const fingerprint = `${t.title}-${t.sourceText}`;
-
-        const task = await Task.findOneAndUpdate(
-          { noteId: note._id, aiFingerprint: fingerprint },
-          {
-            noteId: note._id,
-            title: t.title,
-            dueAt: isValidDate(t.dueAt) ? new Date(t.dueAt) : null,
-            sourceText: t.sourceText,
-            aiFingerprint: fingerprint,
-          },
-          { upsert: true, new: true },
-        );
-
-        note.extractedTasks.push(task._id);
-      }
-
-      // 5. RELATIONS
-      const existingNotes = await Note.find({
-        _id: { $ne: note._id },
-      });
-
+      const existingNotes = await Note.find({ _id: { $ne: note._id } });
       const relations = await findRelations(note, existingNotes);
-
       for (const rel of relations) {
-        await Relation.findOneAndUpdate(
-          {
-            fromNoteId: note._id,
-            toNoteId: rel.toNoteId,
-            type: rel.type,
-          },
-          {
-            fromNoteId: note._id,
-            toNoteId: rel.toNoteId,
-            type: rel.type,
-            confidence: rel.confidence,
-          },
-          { upsert: true },
-        );
+        try {
+          await Relation.findOneAndUpdate(
+            { fromNoteId: note._id, toNoteId: rel.toNoteId, type: rel.type },
+            {
+              fromNoteId: note._id,
+              toNoteId: rel.toNoteId,
+              type: rel.type,
+              confidence: rel.confidence,
+              userId: req.user._id,
+            },
+            { upsert: true }
+          );
+        } catch (err) {
+          console.error("Relation error:", err.message);
+        }
       }
 
       await note.save();
@@ -239,11 +237,18 @@ router.patch("/:id", async (req, res) => {
 // get all notes
 router.get("/", async (req, res) => {
   try {
-    const notes = await Note.find({ userId: req.user._id })
-      .populate("extractedTasks")
-      .sort({
-        createdAt: -1,
-      });
+    const { q } = req.query;
+    const filter = { userId: req.user._id };
+    if (q && q.trim() !== "") {
+      filter.$or = [
+        { title: { $regex: q, $options: "i" } },
+        { body: { $regex: q, $options: "i" } },
+        { tags: { $regex: q, $options: "i" } },
+      ];
+    }
+    const notes = await Note.find(filter).populate("extractedTasks").sort({
+      createdAt: -1,
+    });
     res.status(200).json({ notes: notes });
   } catch (err) {
     console.error(err);

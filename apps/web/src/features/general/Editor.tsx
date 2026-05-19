@@ -6,10 +6,11 @@ import StarterKit from "@tiptap/starter-kit";
 import { Bold, Italic, List, ListOrdered } from "lucide-react";
 import { useEffect } from "react";
 
-export const Editor = ({ value, onChange,onFocus, onBlur }: any) => {
+export const Editor = ({ value, onChange, onFocus, onBlur, autofocus }: any) => {
   const editor = useEditor({
     extensions: [StarterKit],
     content: value,
+    autofocus: autofocus ? 'end' : false,
     editorProps: {
       attributes: {
         class:

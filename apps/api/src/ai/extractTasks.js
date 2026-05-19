@@ -66,7 +66,7 @@ import { checkAndUpdateUsage } from "../utils/aiUsage.js";
 export const extractTasks = async (content, user) => {
   await checkAndUpdateUsage(user);
   const today = getTodayDate();
-
+  const normalized = normalizeContent(content);
   const response = await client.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0.2,
@@ -76,18 +76,41 @@ export const extractTasks = async (content, user) => {
         content: `
 Today is ${today}.
 
-Extract actionable tasks.
+Extract ALL actionable tasks from the note.
 
-Rules:
-- Convert relative dates like "tomorrow", "Friday" into exact ISO dates (YYYY-MM-DD)
-- If no date, return null
-- Do NOT guess unclear dates
+IMPORTANT:
+- Consider bullet points, checklists, and sentences
+- Treat each bullet or line as a potential task
+- Ignore non-actionable text
+
+TASK TYPES:
+- "one_time" → happens once
+- "recurring" → repeated (daily/weekly)
+
+DATE RULES:
+- Convert "tomorrow", "next Friday", "in 2 days" → exact ISO (YYYY-MM-DD)
+- If ambiguous (e.g. "Friday"), assume NEXT upcoming Friday
+- If no date → null
+
+RECURRENCE RULES:
+- "every day", "daily" → daily
+- "every Monday" → weekly
+- otherwise → "none"
+
+PRIORITY RULES:
+- urgent, asap → high
+- important → medium
+- default → low
 
 Return STRICT JSON array:
+
 [
   {
     "title": "short task",
+    "type": "one_time | recurring",
     "dueAt": "YYYY-MM-DD or null",
+    "recurrence": "daily | weekly | none",
+    "priority": "low | medium | high",
     "sourceText": "original sentence"
   }
 ]
@@ -95,19 +118,34 @@ Return STRICT JSON array:
       },
       {
         role: "user",
-        content,
+        content: normalized,
       },
     ],
   });
 
   const text = response.choices[0].message.content;
 
-  return safeParseTasks(text);
+  const parsed = safeParseTasks(text);
+  return postProcessTasks(parsed);
 };
+
+function postProcessTasks(tasks) {
+  return tasks.map((t) => ({
+    ...t,
+    recurrence: t.recurrence || "none",
+    priority: t.priority || "low",
+    type: t.recurrence !== "none" ? "recurring" : "one_time",
+  }));
+}
 
 function safeParseTasks(text) {
   try {
-    return JSON.parse(text);
+    const cleaned = text
+      .replace(/```json/g, "")
+      .replace(/```/g, "")
+      .trim();
+
+    return JSON.parse(cleaned);
   } catch (err) {
     console.error("Task parse failed:", text);
     return [];
@@ -115,4 +153,11 @@ function safeParseTasks(text) {
 }
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
+}
+function normalizeContent(content) {
+  return content
+    .replace(/•/g, "\n- ")
+    .replace(/\*/g, "\n- ")
+    .replace(/^\s*-\s*/gm, "- ")
+    .trim();
 }

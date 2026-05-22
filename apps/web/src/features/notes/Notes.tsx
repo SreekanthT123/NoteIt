@@ -2,7 +2,7 @@ import NotesCard from "./NoteCard";
 import Masonry from "react-masonry-css";
 import { useState } from "react";
 
-export const Notes = ({ notes, onUpdateNote, taskUpdateMutation }: any) => {
+export const Notes = ({ notes, onUpdateNote, taskUpdateMutation, hasNextPage, isFetchingNextPage, onLoadMore }: any) => {
   const [selectedNote, setSelectedNote] = useState<any>(null);
   const breakpointColumnsObj = {
     default: 3,
@@ -27,6 +27,17 @@ export const Notes = ({ notes, onUpdateNote, taskUpdateMutation }: any) => {
           </div>
         ))}
       </Masonry>
+      {hasNextPage && (
+        <div className="flex justify-center py-4">
+          <button
+            onClick={onLoadMore}
+            disabled={isFetchingNextPage}
+            className="px-6 py-2 rounded-full text-sm bg-slate-200 hover:bg-slate-300 disabled:opacity-50 transition-colors"
+          >
+            {isFetchingNextPage ? "Loading..." : "Load more"}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

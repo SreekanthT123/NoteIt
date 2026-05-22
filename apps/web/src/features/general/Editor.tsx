@@ -14,7 +14,7 @@ export const Editor = ({ value, onChange, onFocus, onBlur, autofocus }: any) => 
     editorProps: {
       attributes: {
         class:
-          "prose prose-sm max-w-none focus:outline-none text-sm leading-relaxed",
+          "prose prose-sm max-w-none focus:outline-none focus:bg-white text-sm leading-relaxed",
       },
     },
     onUpdate: ({ editor }) => {
@@ -34,7 +34,7 @@ export const Editor = ({ value, onChange, onFocus, onBlur, autofocus }: any) => 
   if (!editor) return null;
 
   return (
-    <div className="relative">
+    <div className="relative h-full">
       {editor && (
         <BubbleMenu
           editor={editor}
@@ -99,10 +99,35 @@ export const Editor = ({ value, onChange, onFocus, onBlur, autofocus }: any) => 
           >
             <ListOrdered size={16}/>
           </button>
+          {/* h1 header */}
+          <button 
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor.chain().focus().toggleHeading({ level: 1 }).run();
+            }}
+            className={`
+            px-2 py-1 rounded text-sm font-bold
+            ${editor.isActive("heading", { level: 1 }) ? "bg-slate-200" : ""}
+          `}
+          >
+            H1
+          </button>
+          <button 
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor.chain().focus().toggleHeading({ level: 2 }).run();
+            }}
+            className={`
+            px-2 py-1 rounded text-sm font-bold
+            ${editor.isActive("heading", { level: 2 }) ? "bg-slate-200" : ""}
+          `}
+          >
+            H2
+          </button>
         </BubbleMenu>
       )}
 
-      <div className="rounded-xl p-2 transition focus-within:bg-slate-50">
+      <div className="rounded-md p-2 transition bg-white h-full max-h-[500px] overflow-auto">
         <EditorContent editor={editor} />
       </div>
     </div>

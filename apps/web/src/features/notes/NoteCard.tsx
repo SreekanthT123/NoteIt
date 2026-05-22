@@ -13,7 +13,12 @@ import {
 import { format } from "date-fns";
 import { Editor } from "../general/Editor";
 import TaskCard from "../tasks/TaskCard";
-const NotesCard = ({ note, onUpdateNote, isExpanded, taskUpdateMutation }: any) => {
+const NotesCard = ({
+  note,
+  onUpdateNote,
+  isExpanded,
+  taskUpdateMutation,
+}: any) => {
   const isNewNote = note._id.includes("temp");
   const [editedTitle, setEditedTitle] = useState(note.title || "");
   const [editedText, setEditedText] = useState(note.body);
@@ -37,20 +42,19 @@ const NotesCard = ({ note, onUpdateNote, isExpanded, taskUpdateMutation }: any) 
 
   return (
     <div
-      className={`editor-container relative p-4 rounded-2xl flex flex-col gap-2
+      className={`editor-container relative p-4 rounded-2xl flex flex-col gap-2 h-full
       ${theme.bg} backdrop-blur-md border border-white/20 shadow-sm ${theme.selection}
-      ${
-        isExpanded
-          ? "w-full max-w-3xl h-[80vh] overflow-y-auto pointer-events-auto z-50 shadow-2xl p-6 md:p-8"
-          : ""
-      }`}
+      `}
     >
       <div className="text-base font-medium flex items-center gap-2 py-1">
         <NotebookText />
         <input
-          className="bg-transparent outline-none font-medium text-base w-full placeholder:text-gray-400 cursor-text"
+          className="bg-transparent outline-none font-medium text-base  w-full placeholder:text-gray-400 cursor-text"
           value={editedTitle}
-          onChange={(e) => { setEditedTitle(e.target.value); setIsEditing(true); }}
+          onChange={(e) => {
+            setEditedTitle(e.target.value);
+            setIsEditing(true);
+          }}
           onClick={() => setIsEditing(true)}
           placeholder="Untitled"
         />
@@ -82,7 +86,12 @@ const NotesCard = ({ note, onUpdateNote, isExpanded, taskUpdateMutation }: any) 
               onClick={async () => {
                 setIsSaving(true);
                 try {
-                  await onUpdateNote(note._id, editedText, editedTheme, editedTitle);
+                  await onUpdateNote(
+                    note._id,
+                    editedText,
+                    editedTheme,
+                    editedTitle,
+                  );
                   setIsEditing(false);
                 } finally {
                   setIsSaving(false);
@@ -134,9 +143,18 @@ const NotesCard = ({ note, onUpdateNote, isExpanded, taskUpdateMutation }: any) 
                     )} */}
                     <TaskCard
                       task={t}
-                      startTask={(id: string) => taskUpdateMutation?.mutate({ id, status: "in_progress" })}
-                      completeTask={(id: string) => taskUpdateMutation?.mutate({ id, status: "done" })}
-                      cancelTask={(id: string) => taskUpdateMutation?.mutate({ id, status: "todo" })}
+                      startTask={(id: string) =>
+                        taskUpdateMutation?.mutate({
+                          id,
+                          status: "in_progress",
+                        })
+                      }
+                      completeTask={(id: string) =>
+                        taskUpdateMutation?.mutate({ id, status: "done" })
+                      }
+                      cancelTask={(id: string) =>
+                        taskUpdateMutation?.mutate({ id, status: "todo" })
+                      }
                     />
                   </div>
                 ))

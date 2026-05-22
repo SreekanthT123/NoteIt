@@ -7,6 +7,7 @@ import {
   CalendarDays,
   CirclePlus,
   CreditCardIcon,
+  List,
   LogOutIcon,
   NotebookText,
   Search,
@@ -19,7 +20,12 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "../src/components/ui/tabs";
 import { Button } from "./components/ui/button";
 import { api } from "./api/client";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Input } from "./components/ui/input";
 import LiveClock from "./features/general/LiveClock";
@@ -38,6 +44,7 @@ import {
 } from "./components/ui/dropdown-menu";
 import AiUsage from "./features/general/AiUsage";
 import HorizontalScroll from "./features/general/Landing";
+import { NotesListView } from "./features/notes/NotesListView";
 
 function App() {
   const [search, setSearch] = useState("");
@@ -52,19 +59,27 @@ function App() {
   const queryClient = useQueryClient();
 
   const {
-    data: notes = [],
+    data: notesData,
     error,
     isError,
-  } = useQuery({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     enabled: isLoggedIn,
     queryKey: ["notes", debouncedSearch],
-    queryFn: async () => {
-      if (!isLoggedIn) return [];
-
-      const res = await api.get("/notes", { params: { q: debouncedSearch } });
-      return res.data.notes;
+    queryFn: async ({ pageParam }: { pageParam: number }) => {
+      const res = await api.get("/notes", {
+        params: { q: debouncedSearch, limit: 20, skip: pageParam },
+      });
+      return res.data as { notes: any[]; total: number; hasMore: boolean };
     },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, _allPages, lastPageParam) =>
+      lastPage.hasMore ? lastPageParam + lastPage.notes.length : undefined,
   });
+
+  const notes = notesData?.pages.flatMap((p) => p.notes) ?? [];
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
@@ -107,13 +122,18 @@ function App() {
     },
   });
 
-  const updateNote = (id: string, body: string, theme: string, title: string) => {
+  const updateNote = (
+    id: string,
+    body: string,
+    theme: string,
+    title: string,
+  ) => {
     return updateMutation.mutateAsync({ id, body, theme, title });
   };
 
   const { data: tasks = [] } = useQuery({
     enabled: isLoggedIn,
-    queryKey: ["tasks", taskFilter],
+    queryKey: ["tasks", taskFilter, "notes"],
     queryFn: async () => {
       if (!isLoggedIn) {
         return [];
@@ -134,18 +154,33 @@ function App() {
   });
 
   const pushNewNote = () => {
-  const newNote = {
-    _id: Math.random().toString(36).substr(2, 9) + "-temp",
-    title: "",
-    body: "",
-    theme: "lavender",
-    processingStatus: "idle",
-  };
+    const newNote = {
+      _id: Math.random().toString(36).substr(2, 9) + "-temp",
+      title: "",
+      body: "",
+      theme: "lavender",
+      processingStatus: "idle",
+    };
 
-  queryClient.setQueryData(["notes", debouncedSearch], (oldData: any) => {
-    return [newNote, ...(oldData || [])];
-  });
-};
+    queryClient.setQueryData(["notes", debouncedSearch], (oldData: any) => {
+      if (!oldData) {
+        return {
+          pages: [{ notes: [newNote], total: 1, hasMore: false }],
+          pageParams: [0],
+        };
+      }
+      return {
+        ...oldData,
+        pages: [
+          {
+            ...oldData.pages[0],
+            notes: [newNote, ...(oldData.pages[0]?.notes ?? [])],
+          },
+          ...oldData.pages.slice(1),
+        ],
+      };
+    });
+  };
 
   const handleUserLogin = (value: boolean) => {
     setIsLoggedIn(value);
@@ -238,13 +273,13 @@ function App() {
         )}
         {!isLoggedIn && (
           <>
-          <button
-                  className="btn-primary text-white border-none px-7 py-3 rounded-[10px] text-sm cursor-pointer transition-all duration-200 font-sans shadow-[0_8px_24px_rgba(124,111,255,0.25)]"
-                  style={{ background: "#7C6FFF" }}
-                  onClick={() => setShowLanding(false)}
-                >
-                  Login to NoteIt
-                </button>
+            <button
+              className="btn-primary text-white border-none px-7 py-3 rounded-[10px] text-sm cursor-pointer transition-all duration-200 font-sans shadow-[0_8px_24px_rgba(124,111,255,0.25)]"
+              style={{ background: "#7C6FFF" }}
+              onClick={() => setShowLanding(false)}
+            >
+              Login to NoteIt
+            </button>
           </>
         )}
       </div>
@@ -335,6 +370,13 @@ function App() {
                     >
                       <CalendarDays />
                     </TabsTrigger>
+                    <TabsTrigger
+                      value="listView"
+                      className="p-2 rounded-full"
+                      onClick={() => setSelectedView("list")}
+                    >
+                      <List />
+                    </TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
@@ -344,14 +386,19 @@ function App() {
                     notes={notes}
                     onUpdateNote={updateNote}
                     taskUpdateMutation={taskUpdateMutation}
+                    hasNextPage={hasNextPage}
+                    isFetchingNextPage={isFetchingNextPage}
+                    onLoadMore={fetchNextPage}
                   />
                 )}
                 {selectedView === "calendar" && (
                   <NotesCalendarView
-                    notes={notes}
                     onUpdateNote={updateNote}
                     className="max-h-full overflow-y-scroll"
                   />
+                )}
+                {selectedView === "list" && (
+                  <NotesListView notes={notes} onUpdateNote={updateNote} />
                 )}
                 {/* <Notes notes={notes} onUpdateNote={updateNote} /> */}
               </div>

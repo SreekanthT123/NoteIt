@@ -135,9 +135,9 @@ export const Login = ({ onAuth }: any) => {
             </Button> */}
             <GoogleLogin
               onSuccess={handleGoogleLogin}
-              onError={() => {
-                console.log("Login Failed");
-              }}
+              onError={() => console.log("Login Failed")}
+              auto_select={false}
+              useOneTap={false}
             />
             <FieldDescription className="text-center">
               {newUser ? "Already have an account?" : "Don't have an account?"}{" "}

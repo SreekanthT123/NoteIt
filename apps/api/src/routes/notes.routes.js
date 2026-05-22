@@ -237,8 +237,9 @@ router.patch("/:id", async (req, res) => {
 // get all notes
 router.get("/", async (req, res) => {
   try {
-    const { q } = req.query;
+    const { q, limit, skip, startDate, endDate } = req.query;
     const filter = { userId: req.user._id };
+
     if (q && q.trim() !== "") {
       filter.$or = [
         { title: { $regex: q, $options: "i" } },
@@ -246,10 +247,27 @@ router.get("/", async (req, res) => {
         { tags: { $regex: q, $options: "i" } },
       ];
     }
-    const notes = await Note.find(filter).populate("extractedTasks").sort({
-      createdAt: -1,
-    });
-    res.status(200).json({ notes: notes });
+
+    if (startDate && endDate) {
+      const end = new Date(endDate);
+      end.setUTCHours(23, 59, 59, 999);
+      filter.createdAt = { $gte: new Date(startDate), $lte: end };
+      const notes = await Note.find(filter)
+        .populate("extractedTasks")
+        .sort({ createdAt: -1 });
+      return res.status(200).json({ notes });
+    }
+
+    const parsedLimit = Math.min(parseInt(limit) || 20, 100);
+    const parsedSkip = parseInt(skip) || 0;
+    const total = await Note.countDocuments(filter);
+    const notes = await Note.find(filter)
+      .populate("extractedTasks")
+      .sort({ createdAt: -1 })
+      .skip(parsedSkip)
+      .limit(parsedLimit);
+
+    res.status(200).json({ notes, total, hasMore: parsedSkip + notes.length < total });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal server error" });

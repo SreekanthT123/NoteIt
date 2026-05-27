@@ -1,33 +1,26 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../../api/client";
 import NotesCard from "./NoteCard";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ScrollArea, ScrollBar } from "../../components/ui/scroll-area";
 
-export const NotesCalendarView = ({ onUpdateNote }: any) => {
-  const [weekOffset, setWeekOffset] = useState(0);
+export const NotesCalendarView = ({
+  notes = [],
+  weekOffset,
+  onWeekChange,
+  onUpdateNote,
+  showAiSummary,
+  deleteMutation,
+}: any) => {
+  const weekDates = getWeekDates(weekOffset);
   const [selectedDatein, setSelectedDatein] = useState(
     toLocalDateKey(new Date()),
   );
-
-  const weekDates = getWeekDates(weekOffset);
-  const startDate = toLocalDateKey(weekDates[0]);
-  const endDate = toLocalDateKey(weekDates[6]);
 
   useEffect(() => {
     const todayKey = toLocalDateKey(new Date());
     const weekKeys = weekDates.map(toLocalDateKey);
     setSelectedDatein(weekKeys.includes(todayKey) ? todayKey : weekKeys[0]);
   }, [weekOffset]);
-
-  const { data: notes = [] } = useQuery({
-    queryKey: ["notes", "week", startDate, endDate],
-    queryFn: async () => {
-      const res = await api.get("/notes", { params: { startDate, endDate } });
-      return res.data.notes as any[];
-    },
-  });
 
   const grouped = groupNotesByDate(notes);
 
@@ -37,7 +30,7 @@ export const NotesCalendarView = ({ onUpdateNote }: any) => {
     <div className="flex flex-col h-full w-full">
       <div className="flex items-center gap-3 px-4 py-2 border-b border-slate-200">
         <button
-          onClick={() => setWeekOffset((o) => o - 1)}
+          onClick={() => onWeekChange((o: number) => o - 1)}
           className="p-1 rounded-full hover:bg-slate-200 transition-colors"
         >
           <ChevronLeft size={18} />
@@ -46,15 +39,15 @@ export const NotesCalendarView = ({ onUpdateNote }: any) => {
           {weekLabel}
         </span>
         <button
-          onClick={() => setWeekOffset((o) => o + 1)}
-          disabled={weekOffset >= 0}
+          onClick={() => onWeekChange((o: number) => o + 1)}
+          disabled={weekOffset === 0}
           className="p-1 rounded-full hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
           <ChevronRight size={18} />
         </button>
         {weekOffset !== 0 && (
           <button
-            onClick={() => setWeekOffset(0)}
+            onClick={() => onWeekChange(0)}
             className="ml-2 text-xs text-indigo-500 hover:underline"
           >
             Today
@@ -90,19 +83,22 @@ export const NotesCalendarView = ({ onUpdateNote }: any) => {
               <div className="p-1 min-w-[90%]">
                 <div className=" h-full w-full">
                   <ScrollArea className=" w-full rounded-md">
-                    <div className="flex w-max space-x-4 p-4">
+                    <div className="flex w-max space-x-4 ">
                       {dayNotes.length === 0 ? (
-                        <div className="text-slate-400 text-sm flex items-center px-2">
+                        <div className="text-slate-400 text-sm flex items-center">
                           No notes this day
                         </div>
                       ) : (
-                        // <ScrollArea className="h-72 w-48 rounded-md border">
                         dayNotes.map((n: any) => (
                           <div key={n._id} className="max-w-xl min-w-xl">
-                            <NotesCard note={n} onUpdateNote={onUpdateNote} />
+                            <NotesCard
+                              note={n}
+                              onUpdateNote={onUpdateNote}
+                              showAiSummary={showAiSummary}
+                              deleteMutation={deleteMutation}
+                            />
                           </div>
                         ))
-                        // </ScrollArea>
                       )}
                     </div>
                     <ScrollBar orientation="horizontal" />
@@ -125,7 +121,7 @@ export const NotesCalendarView = ({ onUpdateNote }: any) => {
   );
 };
 
-function toLocalDateKey(date: Date): string {
+export function toLocalDateKey(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
@@ -142,7 +138,7 @@ function groupNotesByDate(notes: any[]) {
   return map;
 }
 
-function getWeekDates(weekOffset = 0): Date[] {
+export function getWeekDates(weekOffset = 0): Date[] {
   const today = new Date();
   const day = today.getDay();
   const start = new Date(today);

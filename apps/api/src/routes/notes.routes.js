@@ -12,8 +12,8 @@ router.use(authMiddleware);
 
 // Syncs AI-extracted tasks for a note, preserving existing task status on title match.
 // Orphaned tasks (removed from note content) are deleted.
-async function syncTasksForNote(note, body, user) {
-  const tasks = await extractTasks(body, user); // throws "AI usage limit reached" if quota hit
+async function syncTasksForNote(note, body, user, title) {
+  const tasks = await extractTasks(body, user, title); // throws "AI usage limit reached" if quota hit
   if (!Array.isArray(tasks)) return;
 
   const existingTasks = await Task.find({ noteId: note._id, userId: user._id });
@@ -64,7 +64,7 @@ async function syncTasksForNote(note, body, user) {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, body, theme } = req.body;
+    const { title, body, theme, extractTasks: shouldExtractTasks = true } = req.body;
 
     if (!body || body.trim() === "") {
       return res.status(400).json({ error: "Body is required" });
@@ -98,13 +98,15 @@ router.post("/", async (req, res) => {
       note.processingStatus = "completed";
       note.aiProcessedAt = new Date();
 
-      try {
-        await syncTasksForNote(note, body, req.user);
-      } catch (err) {
-        if (err.message === "AI usage limit reached") {
-          return res.status(403).json({ error: err.message });
+      if (shouldExtractTasks !== false) {
+        try {
+          await syncTasksForNote(note, body, req.user, note.title);
+        } catch (err) {
+          if (err.message === "AI usage limit reached") {
+            return res.status(403).json({ error: err.message });
+          }
+          console.error("Task extraction error:", err.message);
         }
-        console.error("Task extraction error:", err.message);
       }
 
       const existingNotes = await Note.find({
@@ -147,7 +149,7 @@ router.post("/", async (req, res) => {
 
 router.patch("/:id", async (req, res) => {
   try {
-    const { body, theme, title } = req.body;
+    const { body, theme, title, extractTasks: shouldExtractTasks = true } = req.body;
 
     if (!body || body.trim() === "") {
       return res.status(400).json({ error: "Body is required" });
@@ -191,13 +193,15 @@ router.patch("/:id", async (req, res) => {
       note.processingStatus = "completed";
       note.aiProcessedAt = new Date();
 
-      try {
-        await syncTasksForNote(note, body, req.user);
-      } catch (err) {
-        if (err.message === "AI usage limit reached") {
-          return res.status(403).json({ error: err.message });
+      if (shouldExtractTasks !== false) {
+        try {
+          await syncTasksForNote(note, body, req.user, note.title);
+        } catch (err) {
+          if (err.message === "AI usage limit reached") {
+            return res.status(403).json({ error: err.message });
+          }
+          console.error("Task extraction error:", err.message);
         }
-        console.error("Task extraction error:", err.message);
       }
 
       const existingNotes = await Note.find({ _id: { $ne: note._id } });
@@ -271,6 +275,28 @@ router.get("/", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// delete note and its tasks
+router.delete("/:id", async (req, res) => {
+  try {
+    const note = await Note.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+
+    if (!note) {
+      return res.status(404).json({ error: "Note not found" });
+    }
+
+    await Task.deleteMany({ noteId: note._id });
+    await Relation.deleteMany({ $or: [{ fromNoteId: note._id }, { toNoteId: note._id }] });
+
+    res.json({ message: "Note and associated tasks deleted" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Deletion failed" });
   }
 });
 

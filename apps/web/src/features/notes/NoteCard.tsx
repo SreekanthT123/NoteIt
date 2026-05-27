@@ -9,15 +9,26 @@ import {
   Bot,
   NotebookText,
   LoaderCircle,
+  Trash,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Editor } from "../general/Editor";
 import TaskCard from "../tasks/TaskCard";
+import { Checkbox } from "../../components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
 const NotesCard = ({
   note,
   onUpdateNote,
   isExpanded,
   taskUpdateMutation,
+  showAiSummary,
+  deleteMutation,
 }: any) => {
   const isNewNote = note._id.includes("temp");
   const [editedTitle, setEditedTitle] = useState(note.title || "");
@@ -28,6 +39,7 @@ const NotesCard = ({
   );
   const [showDetails, setShowDetails] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [extractTasksEnabled, setExtractTasksEnabled] = useState(true);
   const theme = NOTE_THEMES[editedTheme];
   useEffect(() => {
     const handler = (e: any) => {
@@ -77,7 +89,19 @@ const NotesCard = ({
               ></div>
             ))}
           </div>
+
           <div className="flex justify-end items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+              <Checkbox
+                checked={extractTasksEnabled}
+                onCheckedChange={() =>
+                  setExtractTasksEnabled(!extractTasksEnabled)
+                }
+                className="rounded bg-white"
+              />
+              Extract tasks
+            </label>{" "}
+            |
             <Button
               variant="outline"
               size="icon"
@@ -91,6 +115,7 @@ const NotesCard = ({
                     editedText,
                     editedTheme,
                     editedTitle,
+                    extractTasksEnabled,
                   );
                   setIsEditing(false);
                 } finally {
@@ -104,7 +129,7 @@ const NotesCard = ({
                 <CheckCircle />
               )}
             </Button>
-            <Button variant="outline" size="icon" className="rounded-full">
+            <Button variant="outline" size="icon" className="rounded-full" onClick={() => deleteMutation?.mutate({ id: note._id, type: 'note' })}>
               <Trash2 />
             </Button>
           </div>
@@ -121,13 +146,15 @@ const NotesCard = ({
 
       {note.processingStatus === "completed" && (
         <>
-          <div className={`p-4 rounded-lg ${theme.subBg}`}>
-            <div className="text-[10px] pb-1 font-medium flex items-center gap-1 justify-start">
-              <Bot className={`p-1 rounded-full ${theme.bg}`} size={18} /> AI
-              Summary
+          {showAiSummary && (
+            <div className={`p-4 rounded-lg ${theme.subBg}`}>
+              <div className="text-[10px] pb-1 font-medium flex items-center gap-1 justify-start">
+                <Bot className={`p-1 rounded-full ${theme.bg}`} size={18} /> AI
+                Summary
+              </div>
+              <div className={`text-xs `}>{note.aiSummary}</div>
             </div>
-            <div className={`text-xs `}>{note.aiSummary}</div>
-          </div>
+          )}
           {showDetails && (
             <div className="mt-2 p-2 rounded-lg bg-white/30 flex flex-col gap-2">
               <div className="text-xs font-semibold">Tasks</div>
@@ -155,6 +182,7 @@ const NotesCard = ({
                       cancelTask={(id: string) =>
                         taskUpdateMutation?.mutate({ id, status: "todo" })
                       }
+                      deleteMutation={deleteMutation}
                     />
                   </div>
                 ))
@@ -169,7 +197,10 @@ const NotesCard = ({
         <div className="flex justify-between flex-1 items-end ">
           <div>
             {note.extractedTasks.length > 0 && (
-              <span className="text-[10px] text-gray-500 px-2 flex gap-1 items-center">
+              <span
+                onClick={() => setShowDetails((prev) => !prev)}
+                className="text-[10px] text-gray-500 px-2 flex gap-1 items-center cursor-pointer hover:text-gray-900 transition-colors"
+              >
                 <SquareCheck size={16} /> {note.extractedTasks.length}
               </span>
             )}
@@ -178,14 +209,23 @@ const NotesCard = ({
             <div className="text-[10px] text-gray-500  ">
               {format(new Date(note.createdAt), "MMM d, yyyy")}
             </div>
-            {/* on clicking elipsis i want to expand the entire card full screen to show all details of the cards including tasks details and ai summary*/}
-            {!isExpanded && (
-              <EllipsisVertical
-                size={16}
-                className="text-gray-500 cursor-pointer hover:text-gray-900 transition-colors"
-                onClick={() => setShowDetails((prev) => !prev)}
-              />
-            )}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full">
+                  <EllipsisVertical
+                    size={16}
+                    className="text-gray-500 cursor-pointer hover:text-gray-900 transition-colors"
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => deleteMutation?.mutate({ id: note._id, type: 'note' })}>
+                  <Trash />
+                  Delete Note
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       )}

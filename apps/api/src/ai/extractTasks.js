@@ -63,10 +63,12 @@
 import client from "./openaiClient.js";
 import { checkAndUpdateUsage } from "../utils/aiUsage.js";
 
-export const extractTasks = async (content, user) => {
+export const extractTasks = async (content, user, title) => {
   await checkAndUpdateUsage(user);
   const today = getTodayDate();
-  const normalized = normalizeContent(content);
+  const userMessage = title?.trim()
+    ? `Note title: ${title}\n\nNote content:\n${normalizeContent(content)}`
+    : normalizeContent(content);
   const response = await client.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0.2,
@@ -79,6 +81,7 @@ Today is ${today}.
 Extract ALL actionable tasks from the note.
 
 IMPORTANT:
+- The note title (if provided) gives context — use it to improve task identification
 - Consider bullet points, checklists, and sentences
 - Treat each bullet or line as a potential task
 - Ignore non-actionable text
@@ -118,7 +121,7 @@ Return STRICT JSON array:
       },
       {
         role: "user",
-        content: normalized,
+        content: userMessage,
       },
     ],
   });

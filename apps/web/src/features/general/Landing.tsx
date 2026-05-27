@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -380,7 +381,10 @@ export default function NoteItLanding({
                 >
                   Login to NoteIt
                 </button>
-                <button className="btn-ghost text-slate-500 border border-slate-200 bg-white px-7 py-3 rounded-[10px] text-sm font-sans cursor-pointer transition-all duration-200">
+                <button
+                  className="btn-ghost text-slate-500 border border-slate-200 bg-white px-7 py-3 rounded-[10px] text-sm font-sans cursor-pointer transition-all duration-200"
+                  onClick={() => toast.info("Demo coming soon — stay tuned!")}
+                >
                   Watch demo ↗
                 </button>
               </div>

@@ -4,6 +4,7 @@ import { Tasks } from "./features/tasks/Tasks";
 import {
   BadgeCheckIcon,
   BellIcon,
+  Bot,
   CalendarDays,
   CirclePlus,
   CreditCardIcon,
@@ -26,10 +27,10 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "./components/ui/input";
 import LiveClock from "./features/general/LiveClock";
-import { NotesCalendarView } from "./features/notes/NotesCalendarView";
+import { NotesCalendarView, getWeekDates, toLocalDateKey } from "./features/notes/NotesCalendarView";
 import { TasksCalendarView } from "./features/tasks/TasksCalendarView";
 import { toast } from "sonner";
 
@@ -55,8 +56,33 @@ function App() {
   const [selectedTab, setSelectedTab] = useState("notesTabView");
   const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem("token"));
   const [limitReached, setLimitReached] = useState(false);
+  const [showAiSummary, setShowAiSummary] = useState(true);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [tempNotes, setTempNotes] = useState<any[]>([]);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+
+  const { startDate, endDate } = useMemo(() => {
+    const dates = getWeekDates(weekOffset);
+    return { startDate: toLocalDateKey(dates[0]), endDate: toLocalDateKey(dates[6]) };
+  }, [weekOffset]);
 
   const queryClient = useQueryClient();
+  const prevNotesRef = useRef<any[]>([]);
+
+  const { data: currentUser } = useQuery({
+    enabled: isLoggedIn,
+    queryKey: ["currentUser"],
+    queryFn: async () => {
+      const res = await api.get("/auth/me");
+      return res.data as {
+        email: string;
+        name: string;
+        picture: string;
+        aiUsageCount: number;
+        aiUsageLimit: number;
+      };
+    },
+  });
 
   const {
     data: notesData,
@@ -77,9 +103,64 @@ function App() {
     initialPageParam: 0,
     getNextPageParam: (lastPage, _allPages, lastPageParam) =>
       lastPage.hasMore ? lastPageParam + lastPage.notes.length : undefined,
+    refetchInterval: (query) => {
+      const hasProcessing = query.state.data?.pages.some((p) =>
+        p.notes.some((n: any) => n.processingStatus === "processing"),
+      );
+      return hasProcessing ? 3000 : false;
+    },
+  });
+
+  const { data: calendarNotes = [] } = useQuery({
+    enabled: isLoggedIn && selectedView === "calendar",
+    queryKey: ["notes", "week", startDate, endDate],
+    queryFn: async () => {
+      const res = await api.get("/notes", { params: { startDate, endDate } });
+      return res.data.notes as any[];
+    },
+  });
+
+  // delete mutation for tasks and notes
+  const deleteMutation = useMutation({
+    mutationFn: async ({ id, type }: any) => {
+      if (id.includes("temp")) return;
+      if (type === "note") {
+        await api.delete(`/notes/${id}`);
+      } else if (type === "task") {
+        await api.delete(`/tasks/${id}`);
+      }
+    },
+    onError: () => toast.error("Failed to delete. Please try again."),
+    onSuccess: (_data, variables) => {
+      if (variables.id?.includes("temp")) {
+        setTempNotes((prev) => prev.filter((n) => n._id !== variables.id));
+        return;
+      }
+      if (variables.type === "note") {
+        toast.success("Note deleted");
+      } else if (variables.type === "task") {
+        toast.success("Task deleted");
+      }
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
   });
 
   const notes = notesData?.pages.flatMap((p) => p.notes) ?? [];
+  useEffect(() => {
+    const prev = prevNotesRef.current;
+    const justCompleted = notes.filter(
+      (n) =>
+        prev.find(
+          (p) => p._id === n._id && p.processingStatus === "processing",
+        ) && n.processingStatus === "completed",
+    );
+    if (justCompleted.length > 0) {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    }
+    prevNotesRef.current = notes;
+  }, [notes]);
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
@@ -106,19 +187,22 @@ function App() {
   // });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, body, theme, title }: any) => {
+    mutationFn: async ({ id, body, theme, title, extractTasks }: any) => {
       if (id.includes("temp")) {
-        await api.post("/notes", { body, theme, title });
+        await api.post("/notes", { body, theme, title, extractTasks });
       } else {
-        await api.patch(`/notes/${id}`, { body, theme, title });
+        await api.patch(`/notes/${id}`, { body, theme, title, extractTasks });
       }
     },
+    onError: () => toast.error("Failed to save note. Please try again."),
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["notes"] });
-
       if (variables.id.includes("temp")) {
-        toast.success("Notes saved successfully");
+        setTempNotes((prev) => prev.filter((n) => n._id !== variables.id));
       }
+      toast.success("Note saved");
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
     },
   });
 
@@ -127,8 +211,9 @@ function App() {
     body: string,
     theme: string,
     title: string,
+    extractTasks = true,
   ) => {
-    return updateMutation.mutateAsync({ id, body, theme, title });
+    return updateMutation.mutateAsync({ id, body, theme, title, extractTasks });
   };
 
   const { data: tasks = [] } = useQuery({
@@ -148,8 +233,11 @@ function App() {
     mutationFn: async ({ id, status }: any) => {
       await api.patch(`/tasks/${id}`, { status });
     },
+    onError: () => toast.error("Failed to update task. Please try again."),
     onSuccess: () => {
+      toast.success("Task updated");
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["notes"] });
     },
   });
 
@@ -160,26 +248,15 @@ function App() {
       body: "",
       theme: "lavender",
       processingStatus: "idle",
+      createdAt: new Date().toISOString(),
     };
+    setTempNotes((prev) => [newNote, ...prev]);
+  };
 
-    queryClient.setQueryData(["notes", debouncedSearch], (oldData: any) => {
-      if (!oldData) {
-        return {
-          pages: [{ notes: [newNote], total: 1, hasMore: false }],
-          pageParams: [0],
-        };
-      }
-      return {
-        ...oldData,
-        pages: [
-          {
-            ...oldData.pages[0],
-            notes: [newNote, ...(oldData.pages[0]?.notes ?? [])],
-          },
-          ...oldData.pages.slice(1),
-        ],
-      };
-    });
+  const viewSourceNote = (noteId: string) => {
+    setSelectedNoteId(noteId);
+    setSelectedTab("notesTabView");
+    setSelectedView("list");
   };
 
   const handleUserLogin = (value: boolean) => {
@@ -187,6 +264,7 @@ function App() {
     if (value) {
       queryClient.invalidateQueries({ queryKey: ["notes"] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
     }
   };
   return (
@@ -228,24 +306,28 @@ function App() {
                   <Button variant="ghost" size="icon" className="rounded-full">
                     <Avatar>
                       <AvatarImage
-                        src="https://github.com/shadcn.png"
-                        alt="shadcn"
+                        src={currentUser?.picture || ""}
+                        alt={currentUser?.name || currentUser?.email || ""}
                       />
-                      <AvatarFallback>LR</AvatarFallback>
+                      <AvatarFallback>
+                        {(currentUser?.name || currentUser?.email || "?")
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuGroup>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toast.info("Account settings — coming soon")}>
                       <BadgeCheckIcon />
                       Account
                     </DropdownMenuItem>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toast.info("Billing — coming soon")}>
                       <CreditCardIcon />
                       Billing
                     </DropdownMenuItem>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toast.info("Notifications — coming soon")}>
                       <BellIcon />
                       Notifications
                     </DropdownMenuItem>
@@ -264,9 +346,11 @@ function App() {
               </DropdownMenu>
             </div>
             <div className="flex flex-col">
-              <div className="text-sm text-white font-light">Sreekanth T</div>
+              <div className="text-sm text-white font-light">
+                {currentUser?.name || currentUser?.email}
+              </div>
               <div className="text-xs text-slate-300 font-light">
-                Sreekanthksy02@gmail.com
+                {currentUser?.email}
               </div>
             </div>
           </div>
@@ -301,7 +385,7 @@ function App() {
           <div className="flex w-full items-center p-4 px-8">
             <div className="text-2xl text-slate-800 w-[40%]">
               {" "}
-              👋Welcome Sreekanth!
+              👋Welcome {currentUser?.name?.split(" ")[0] || "back"}!
             </div>
             <div className="flex gap-2 items-center w-[60%] justify-end">
               {selectedTab === "notesTabView" && (
@@ -379,26 +463,47 @@ function App() {
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={() => setShowAiSummary((prev) => !prev)}
+                >
+                  <Bot />
+                </Button>
               </div>
               <div className="flex-1 min-h-full max-h-full overflow-auto">
                 {selectedView === "notes" && (
                   <Notes
-                    notes={notes}
+                    notes={[...tempNotes, ...notes]}
                     onUpdateNote={updateNote}
                     taskUpdateMutation={taskUpdateMutation}
+                    deleteMutation={deleteMutation}
                     hasNextPage={hasNextPage}
                     isFetchingNextPage={isFetchingNextPage}
                     onLoadMore={fetchNextPage}
+                    showAiSummary={showAiSummary}
+                    onCreateNote={pushNewNote}
                   />
                 )}
                 {selectedView === "calendar" && (
                   <NotesCalendarView
+                    notes={[...tempNotes, ...calendarNotes]}
+                    weekOffset={weekOffset}
+                    onWeekChange={setWeekOffset}
                     onUpdateNote={updateNote}
-                    className="max-h-full overflow-y-scroll"
+                    deleteMutation={deleteMutation}
+                    showAiSummary={showAiSummary}
                   />
                 )}
                 {selectedView === "list" && (
-                  <NotesListView notes={notes} onUpdateNote={updateNote} />
+                  <NotesListView
+                    notes={[...tempNotes, ...notes]}
+                    onUpdateNote={updateNote}
+                    showAiSummary={showAiSummary}
+                    deleteMutation={deleteMutation}
+                    initialSelectedNoteId={selectedNoteId}
+                  />
                 )}
                 {/* <Notes notes={notes} onUpdateNote={updateNote} /> */}
               </div>
@@ -435,16 +540,33 @@ function App() {
               </div>
               <div className="flex-1 min-h-full max-h-full overflow-auto">
                 {selectedView === "notes" && (
-                  <Tasks tasks={tasks} mutation={taskUpdateMutation} />
+                  <Tasks
+                    tasks={tasks}
+                    mutation={taskUpdateMutation}
+                    deleteMutation={deleteMutation}
+                    onViewSourceNote={viewSourceNote}
+                  />
                 )}
                 {selectedView === "calendar" && (
                   <TasksCalendarView
                     tasks={tasks}
                     mutation={taskUpdateMutation}
+                    deleteMutation={deleteMutation}
+                    onViewSourceNote={viewSourceNote}
                     className="max-h-full overflow-y-scroll"
                   />
                 )}
-                {/* <Notes notes={notes} onUpdateNote={updateNote} /> */}
+              </div>
+            </div>
+          )}
+          {selectedTab === "digestTabView" && (
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="flex flex-col items-center gap-4 p-10 bg-white rounded-2xl shadow-sm max-w-md text-center">
+                <div className="text-5xl">🔧</div>
+                <div className="text-xl font-semibold text-slate-800">Daily Digest — Coming Soon</div>
+                <div className="text-sm text-slate-500 leading-relaxed">
+                  We're building your AI-powered daily briefing — a curated summary of your notes, today's tasks, and upcoming deadlines. Check back soon!
+                </div>
               </div>
             </div>
           )}

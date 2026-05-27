@@ -2,9 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import TaskCard from "./TaskCard";
 
-export const TasksCalendarView = ({ tasks, mutation }: any) => {
-  
-
+export const TasksCalendarView = ({ tasks, mutation, deleteMutation, onViewSourceNote }: any) => {
   //   const { data: notes = [] } = useQuery({
   //     queryKey: ["notes"],
   //     queryFn: async () => {
@@ -49,12 +47,16 @@ export const TasksCalendarView = ({ tasks, mutation }: any) => {
             {/* Header */}
             <div className=" mb-2 text-center">
               {/* get day alone from day like sun mon */}
-              <div className={`text-xl text-slate-400 ${key === todayKey ? "text-slate-800 font-medium" : ""}`}>
+              <div
+                className={`text-xl text-slate-400 ${key === todayKey ? "text-slate-800 font-medium" : ""}`}
+              >
                 {new Date(day).toLocaleDateString("en-US", {
                   weekday: "short",
                 })}
               </div>
-              <div className={`font-medium text-sm text-slate-400 ${key === todayKey ? "text-slate-800" : ""}`}>
+              <div
+                className={`font-medium text-sm text-slate-400 ${key === todayKey ? "text-slate-800" : ""}`}
+              >
                 {new Date(day).toLocaleDateString("en-GB", {
                   day: "numeric",
                   month: "short",
@@ -75,7 +77,21 @@ export const TasksCalendarView = ({ tasks, mutation }: any) => {
                     delay: index * 0.08,
                   }}
                 >
-                  <TaskCard task={n} startTask={() => mutation.mutate({ id: n._id, status: "in_progress" })} cancelTask={() => mutation.mutate({ id: n._id, status: "todo" })} completeTask={() => mutation.mutate({ id: n._id, status: "done" })} view={'calendarView'}/>
+                  <TaskCard
+                    task={n}
+                    startTask={() =>
+                      mutation.mutate({ id: n._id, status: "in_progress" })
+                    }
+                    cancelTask={() =>
+                      mutation.mutate({ id: n._id, status: "todo" })
+                    }
+                    completeTask={() =>
+                      mutation.mutate({ id: n._id, status: "done" })
+                    }
+                    view={"calendarView"}
+                    deleteMutation={deleteMutation}
+                    onViewSourceNote={onViewSourceNote}
+                  />
                 </motion.div>
               ))}
             </div>
@@ -89,11 +105,10 @@ export const TasksCalendarView = ({ tasks, mutation }: any) => {
 function groupNotesByDate(notes: any[]) {
   const map: Record<string, any[]> = {};
 
-  for (let note of notes) {
-    const date = new Date(note.createdAt).toISOString().split("T")[0];
-
+  for (const note of notes) {
+    if (!note.dueAt) continue;
+    const date = new Date(note.dueAt).toISOString().split("T")[0];
     if (!map[date]) map[date] = [];
-
     map[date].push(note);
   }
 

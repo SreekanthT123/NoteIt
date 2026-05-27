@@ -7,8 +7,10 @@ import {
   Clock,
   AlertCircle,
   RotateCcw,
+  Trash,
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,6 +21,7 @@ interface Task {
   status: "todo" | "in_progress" | "done";
   dueAt?: string;
   recurrence?: string;
+  sourceNote?: string;
 }
 
 interface TaskCardProps {
@@ -26,7 +29,9 @@ interface TaskCardProps {
   startTask: (id: string) => void;
   cancelTask: (id: string) => void;
   completeTask: (id: string) => void;
+  deleteMutation?: any;
   view?: string;
+  onViewSourceNote?: (noteId: string) => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -82,7 +87,9 @@ const TaskCard = ({
   startTask,
   cancelTask,
   completeTask,
+  deleteMutation,
   view,
+  onViewSourceNote,
 }: TaskCardProps) => {
   const status   = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.todo;
   const priority = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.low;
@@ -195,12 +202,13 @@ const TaskCard = ({
         `}
       >
         {/* Source link icon (non-calendar only) */}
-        {!isCalendar && (
+        {!isCalendar && task.sourceNote && (
           <Button
             variant="ghost"
             size="icon-sm"
             className="text-slate-400 hover:text-violet-500 hover:bg-violet-50 rounded-lg transition-colors"
             title="View source note"
+            onClick={() => onViewSourceNote?.(task.sourceNote!)}
           >
             <CircleArrowOutUpLeft size={14} />
           </Button>
@@ -246,14 +254,22 @@ const TaskCard = ({
         )}
 
         {/* More options */}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-slate-300 hover:text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
-          title="More options"
-        >
-          <EllipsisVertical size={14} />
-        </Button>
+        <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full">
+                  <EllipsisVertical
+                    size={16}
+                    className="text-gray-500 cursor-pointer hover:text-gray-900 transition-colors"
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => deleteMutation?.mutate({ id: task._id, type: 'task' })}>
+                  <Trash />
+                  Delete Task
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
       </div>
     </div>
   );

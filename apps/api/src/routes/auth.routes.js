@@ -10,13 +10,13 @@ const router = express.Router();
 // signup
 router.post("/signup", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, name } = req.body;
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "User already exists" });
     }
     const passwordHash = await bcrypt.hash(password, 10);
-    const newUser = await User.create({ email, passwordHash });
+    const newUser = await User.create({ email, passwordHash, name: name || "" });
 
     const token = generateToken(newUser);
     res.status(201).json({ token, user: newUser });
@@ -61,6 +61,10 @@ router.post("/google", async (req, res) => {
     let user = await User.findOne({ email });
     if (!user) {
       user = await User.create({ email, name, picture, provider: "google" });
+    } else if (!user.name && name) {
+      user.name = name;
+      user.picture = picture;
+      await user.save();
     }
     const token = generateToken(user);
     res.status(200).json({ token, user });
@@ -73,6 +77,8 @@ router.post("/google", async (req, res) => {
 router.get("/me", authMiddleware, (req, res) => {
   res.json({
     email: req.user.email,
+    name: req.user.name,
+    picture: req.user.picture,
     aiUsageCount: req.user.aiUsageCount,
     aiUsageLimit: req.user.aiUsageLimit,
   });

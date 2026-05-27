@@ -1,20 +1,16 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
 
-type Usage = {
-  email: string;
-  aiUsageCount: number;
-  aiUsageLimit: number;
-};
-
 function AiUsage({ limitReached }: { limitReached: boolean }) {
-  const [usage, setUsage] = useState<Usage | null>(null);
+  const { data } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: async () => {
+      const res = await api.get("/auth/me");
+      return res.data;
+    },
+    enabled: !!localStorage.getItem("token"),
+  });
 
-  useEffect(() => {
-    api.get("/auth/me").then((res) => {
-      setUsage(res.data);
-    });
-  }, []);
   return (
     <div>
       {limitReached && (
@@ -23,7 +19,7 @@ function AiUsage({ limitReached }: { limitReached: boolean }) {
         </div>
       )}
       <p className="text-orange-500 text-xs">
-        AI Usage: {usage?.aiUsageCount} / {usage?.aiUsageLimit}
+        AI Usage: {data?.aiUsageCount ?? "—"} / {data?.aiUsageLimit ?? "—"}
       </p>
     </div>
   );

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { api } from "../../api/client";
+import { toast } from "sonner";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
 import {
@@ -12,6 +13,7 @@ import {
 import { GoogleLogin } from "@react-oauth/google";
 
 export const Login = ({ onAuth }: any) => {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -25,7 +27,7 @@ export const Login = ({ onAuth }: any) => {
     setLoading(true);
     try {
       if (newUser) {
-        const res = await api.post("/auth/signup", { email, password });
+        const res = await api.post("/auth/signup", { email, password, name });
         localStorage.setItem("token", res.data.token);
         onAuth(true);
       } else {
@@ -34,7 +36,7 @@ export const Login = ({ onAuth }: any) => {
         onAuth(true);
       }
     } catch (err: any) {
-      setError(err.response.data.error);
+      setError(err.response?.data?.error || "Network error. Please check the server is running.");
       onAuth(false);
     } finally {
       setLoading(false);
@@ -42,12 +44,14 @@ export const Login = ({ onAuth }: any) => {
   };
 
   const handleGoogleLogin = async (credentialResponse: any) => {
-    const res = await api.post("/auth/google", {
-      idToken: credentialResponse.credential, // ✅ match backend
-    });
-
-    localStorage.setItem("token", res.data.token);
-    onAuth(true);
+    try {
+      const res = await api.post("/auth/google", { idToken: credentialResponse.credential });
+      localStorage.setItem("token", res.data.token);
+      onAuth(true);
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Google sign-in failed. Please try again.");
+      onAuth(false);
+    }
   };
   return (
     <div className="">
@@ -62,6 +66,19 @@ export const Login = ({ onAuth }: any) => {
               account
             </p>
           </div>
+          {newUser && (
+            <Field>
+              <FieldLabel htmlFor="name">Full Name</FieldLabel>
+              <Input
+                id="name"
+                type="text"
+                placeholder="John Doe"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </Field>
+          )}
           <Field>
             <FieldLabel htmlFor="email">Email</FieldLabel>
             <Input
@@ -80,6 +97,7 @@ export const Login = ({ onAuth }: any) => {
                 <a
                   href="#"
                   className="ml-auto text-sm underline-offset-4 hover:underline"
+                  onClick={(e) => { e.preventDefault(); toast.info("Password reset — coming soon"); }}
                 >
                   Forgot your password?
                 </a>
@@ -113,6 +131,7 @@ export const Login = ({ onAuth }: any) => {
                 loading ||
                 !email ||
                 !password ||
+                (newUser && !name) ||
                 (newUser && !confirmPassword) ||
                 (newUser && password !== confirmPassword)
               }
@@ -135,7 +154,7 @@ export const Login = ({ onAuth }: any) => {
             </Button> */}
             <GoogleLogin
               onSuccess={handleGoogleLogin}
-              onError={() => console.log("Login Failed")}
+              onError={() => toast.error("Google sign-in failed. Please try again.")}
               auto_select={false}
               useOneTap={false}
             />

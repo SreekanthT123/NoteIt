@@ -204,7 +204,10 @@ router.patch("/:id", async (req, res) => {
         }
       }
 
-      const existingNotes = await Note.find({ _id: { $ne: note._id } });
+      const existingNotes = await Note.find({
+        _id: { $ne: note._id },
+        userId: req.user._id,
+      });
       const relations = await findRelations(note, existingNotes);
       for (const rel of relations) {
         try {

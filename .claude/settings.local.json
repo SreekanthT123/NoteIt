@@ -20,7 +20,8 @@
       "Bash(Get-ChildItem -Path \"c:\\\\React\\\\Learning\\\\ThinkStack - notes app\\\\apps\\\\web\" -Force)",
       "Bash(Select-Object Name, FullName)",
       "Bash(Select-Object -ExpandProperty FullName)",
-      "Bash(Sort-Object)"
+      "Bash(Sort-Object)",
+      "Bash(npm install *)"
     ]
   }
 }

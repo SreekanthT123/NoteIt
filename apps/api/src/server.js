@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 dotenv.config();
@@ -9,13 +10,27 @@ import digestRoutes from "./routes/digest.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGIN || "http://localhost:5173",
+  credentials: true,
+}));
 app.use(express.json());
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later." },
+});
 
 // Routes
 app.use("/notes", notesRoutes);
 app.use("/tasks", tasksRoutes);
 app.use("/digest", digestRoutes);
+app.use("/auth/login", authLimiter);
+app.use("/auth/signup", authLimiter);
+app.use("/auth/google", authLimiter);
 app.use("/auth", authRoutes);
 
 app.get("/", (req, res) => {

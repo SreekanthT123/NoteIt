@@ -12,17 +12,18 @@ router.post("/generate", async (req, res) => {
     const today = new Date().toISOString().split("T")[0];
 
     const notes = await Note.find({
+      userId: req.user._id,
       createdAt: {
         $gte: new Date(today + "T00:00:00Z"),
       },
     });
 
-    const tasks = await Task.find();
+    const tasks = await Task.find({ userId: req.user._id });
 
     const digestContent = await generateDigest(notes, tasks);
 
     const digest = await DailyDigest.findOneAndUpdate(
-      { dateKey: today },
+      { userId: req.user._id, dateKey: today },
       {
         userId: req.user._id,
         dateKey: today,

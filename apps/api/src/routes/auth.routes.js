@@ -11,6 +11,15 @@ const router = express.Router();
 router.post("/signup", async (req, res) => {
   try {
     const { email, password, name } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Invalid email format" });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters" });
+    }
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "User already exists" });
@@ -30,6 +39,12 @@ router.post("/signup", async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Invalid email format" });
+    }
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({ error: "Invalid credentials" });

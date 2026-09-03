@@ -1,4 +1,5 @@
-# ThinkStack
+# Note!t
+<img width="1872" height="956" alt="image" src="https://github.com/user-attachments/assets/05971dde-9153-47e4-80c6-d57de77e5113" />
 
 An AI-powered notes application that automatically extracts actionable tasks, generates smart summaries, discovers relationships between notes, and produces daily digests — all in real time as you write.
 
